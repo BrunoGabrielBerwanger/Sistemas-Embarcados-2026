@@ -1,0 +1,5 @@
+../Core/Src/max30100.c:12:19:MAX30100_WriteReg	32	static
+../Core/Src/max30100.c:18:19:MAX30100_ReadReg	32	static
+../Core/Src/max30100.c:23:19:MAX30100_ReadMulti	32	static
+../Core/Src/max30100.c:28:6:MAX30100_Init	8	static
+../Core/Src/max30100.c:53:19:MAX30100_ReadFIFO	40	static
