@@ -36,9 +36,9 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define SAMPLE_RATE_HZ 100
-#define FINGER_PRESENT_LIMIT 30000
+#define FINGER_PRESENT_LIMIT 15000
 #define DELTA_PULSE 150
-#define MIN_BEAT_INTEVAL 200
+#define MIN_BEAT_INTEVAL 10
 
 enum {
 	SM_INIT_STATE = 0,
@@ -61,6 +61,7 @@ volatile uint8_t sample_flag = 0;
 volatile uint16_t last_ir;
 static uint32_t last_sample_tick;
 static uint8_t beat_lock;
+volatile uint32_t dc_baseline;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -115,6 +116,23 @@ HAL_StatusTypeDef State_Machine(void) {
 				break;
 		    }
 
+			if(sensor_data.ir < FINGER_PRESENT_LIMIT) {
+				break;
+			}
+
+			dc_baseline = (dc_baseline * 0.95) + (sensor_data.ir * 0.05);
+
+
+			if (sensor_data.ir < (dc_baseline - DELTA_PULSE) && beat_lock == 0){
+				beat_lock = 1;
+				HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_SET);
+			}
+
+			if (sensor_data.ir > dc_baseline && beat_lock == 1){
+				beat_lock = 0;
+				HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
+			}
+/*
 			delta = sensor_data.ir - last_ir;
 
 			if (delta > DELTA_PULSE && beat_lock == 0){
@@ -126,7 +144,7 @@ HAL_StatusTypeDef State_Machine(void) {
 				beat_lock = 0;
 				HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
 			}
-
+*/
 			last_ir = sensor_data.ir;
 
 			break;
