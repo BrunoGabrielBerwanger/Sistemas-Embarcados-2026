@@ -43,7 +43,7 @@ void MAX30100_Init(void)
 
     // Configuração LEDs
     // IR = 50mA, RED = 27.1mA (ajuste conforme necessário)
-    MAX30100_WriteReg(REG_LED_CONFIG, 0x3F);//24
+    MAX30100_WriteReg(REG_LED_CONFIG, 0x3F);
 
     // Modo SPO2 (ativa leitura)
     MAX30100_WriteReg(REG_MODE_CONFIG, 0x03);

@@ -36,12 +36,14 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define SAMPLE_RATE_HZ 100
+#define FINGER_PRESENT_LIMIT 30000
+#define DELTA_PULSE 150
+#define MIN_BEAT_INTEVAL 200
 
 enum {
 	SM_INIT_STATE = 0,
 	SM_IDLE_STATE,
-	SM_AQUIRE_DATA_STATE,
-	SM_UPDATE_DIAG_STATE
+	SM_MONITOR_HART_STATE
 };
 /* USER CODE END PD */
 
@@ -54,14 +56,11 @@ enum {
 
 /* USER CODE BEGIN PV */
 max30100_data_t sensor_data;
-//volatile uint8_t max30100_data_ready = 0;
-//uint8_t max30100_rx_buffer[4];
-uint8_t error_counter;
-HAL_StatusTypeDef status;
-uint8_t CurrentState = SM_INIT_STATE;
 volatile uint8_t button_pressed_event = 0;
 volatile uint8_t sample_flag = 0;
-
+volatile uint16_t last_ir;
+static uint32_t last_sample_tick;
+static uint8_t beat_lock;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -74,44 +73,66 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN 0 */
 
 HAL_StatusTypeDef State_Machine(void) {
-	//static uint8_t CurrentState = SM_INIT_STATE;
+	static uint8_t CurrentState = SM_INIT_STATE;
 	HAL_StatusTypeDef ret = HAL_OK;
+	uint32_t now;
+	int16_t delta;
+
+	now = HAL_GetTick();
 
 	switch(CurrentState) {
 		case SM_INIT_STATE:
 			/*This state is responsible to configure the MAX30100 sensor*/
-			HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
 			MAX30100_Init();
 			HAL_Delay(100);
 			CurrentState = SM_IDLE_STATE;
 			break;
 
 		case SM_IDLE_STATE:
+
+			HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
 			if(button_pressed_event) {
 				button_pressed_event = 0;
-				CurrentState = SM_AQUIRE_DATA_STATE;
+				CurrentState = SM_MONITOR_HART_STATE;
 			}
 			break;
 
-		case SM_AQUIRE_DATA_STATE:
-			HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
-			status = MAX30100_ReadFIFO(&sensor_data);
-			if (status != HAL_OK) {
-				error_counter++;
+		case SM_MONITOR_HART_STATE:
+
+			if(button_pressed_event) {
+				button_pressed_event = 0;
+				CurrentState = SM_IDLE_STATE;
+				break;
+			}
+
+			if(now - last_sample_tick < MIN_BEAT_INTEVAL) {
+				/*only get next sample after minimal interval*/
+				break;
+			}
+			last_sample_tick = now;
+
+			if (MAX30100_ReadFIFO(&sensor_data) != HAL_OK) {
+				break;
 		    }
-			if(sensor_data.ir > 45000) {
-				CurrentState = SM_UPDATE_DIAG_STATE;
+
+			delta = sensor_data.ir - last_ir;
+
+			if (delta > DELTA_PULSE && beat_lock == 0){
+				beat_lock = 1;
+				HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_SET);
 			}
-			HAL_Delay(100);
-			break;
 
-		case SM_UPDATE_DIAG_STATE:
-			HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_SET);
-			CurrentState = SM_IDLE_STATE;
-			break;
+			if (delta < DELTA_PULSE && beat_lock == 1){
+				beat_lock = 0;
+				HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
+			}
 
+			last_ir = sensor_data.ir;
+
+			break;
 		default:
 			//invalid state
+			CurrentState = SM_INIT_STATE;
 			break;
 	}
 	return ret;
@@ -159,10 +180,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  status = State_Machine();
-	  if(status != HAL_OK) {
-		  //something went wrong
-	  }
+	  State_Machine();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -256,18 +274,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         last_button_state = button_state;
     }
 }
-/*
-void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
-{
-    if (hi2c->Instance == I2C1)
-    {
-        sensor_data.ir  = (max30100_rx_buffer[0] << 8) | max30100_rx_buffer[1];
-        sensor_data.red = (max30100_rx_buffer[2] << 8) | max30100_rx_buffer[3];
-
-        max30100_data_ready = 1;
-    }
-}
-*/
 /* USER CODE END 4 */
 
 /**
